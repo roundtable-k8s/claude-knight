@@ -101,6 +101,7 @@ function runtime(config: KnightConfig) {
     activeTasks,
     model: config.claudeModel ?? "claude-code-default",
     runtime: "claude-knight",
+    claudeRuntime: config.runtime,
     billing: config.authMode,
     plan: planSnapshot(),
   };
