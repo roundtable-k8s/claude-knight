@@ -162,6 +162,8 @@ export function parseStreamLine(line: string): SDKMessage | undefined {
 /** Grace period between SIGTERM and SIGKILL when a task is aborted. */
 const KILL_GRACE_MS = 5000;
 const STDERR_TAIL = 4000;
+/** The result message is the last one; a CLI that lingers after it is stopped. */
+const RESULT_EXIT_GRACE_MS = 10_000;
 
 /**
  * Spawn `claude -p` and yield its stream-json messages. Throws when the CLI
@@ -206,7 +208,10 @@ export async function* runClaudeCli(prompt: string, inv: CliInvocation, signal: 
         if (line.trim()) log.debug("claude stdout (not stream-json)", { line: line.slice(0, 500) });
         continue;
       }
-      if (msg.type === "result") sawResult = true;
+      if (msg.type === "result" && !sawResult) {
+        sawResult = true;
+        setTimeout(kill, RESULT_EXIT_GRACE_MS).unref();
+      }
       yield msg;
     }
     const { code, sig } = await exited;
