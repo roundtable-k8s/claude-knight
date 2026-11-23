@@ -11,7 +11,7 @@
  */
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -329,6 +329,24 @@ test("concurrent tasks get distinct working directories, removed afterwards", as
   // the same runId reuses the same directory (session resume is per cwd)
   await go("c4", "run-X");
   assert.equal(seen[3], seen[2]);
+});
+
+test("the knight's root CLAUDE.md and .claude/ are visible from the per-task cwd", async () => {
+  useFixture("success");
+  writeFileSync(join(work, "CLAUDE.md"), "root rules");
+  mkdirSync(join(work, ".claude"), { recursive: true });
+  writeFileSync(join(work, ".claude", "settings.json"), "{}");
+  try {
+    let md = "", st = "";
+    const over = { cliInvocation: (inv: CliInvocation) => (md = readFileSync(join(inv.cwd, "CLAUDE.md"), "utf8"), st = readFileSync(join(inv.cwd, ".claude", "settings.json"), "utf8"), inv) };
+    await executeTask("x", "link1", config, new AbortController().signal, undefined, over);
+    assert.equal(md, "root rules");
+    assert.equal(st, "{}");
+    assert.ok(existsSync(join(work, "CLAUDE.md")) && existsSync(join(work, ".claude", "settings.json")), "removing the task dir leaves the root config intact");
+  } finally {
+    rmSync(join(work, "CLAUDE.md"));
+    rmSync(join(work, ".claude"), { recursive: true });
+  }
 });
 
 test("a failed task's directory is kept only when DEBUG is set", async () => {

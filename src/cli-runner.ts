@@ -116,7 +116,7 @@ export function buildCliInvocation(config: KnightConfig, opts: CliInvocationOpti
     "--allow-dangerously-skip-permissions",
     "--append-system-prompt-file", promptPath,
     // 'user' loads $CLAUDE_CONFIG_DIR (skills, settings); 'project' loads CLAUDE.md
-    // and .claude/ in the workspace — the knight may keep its own there.
+    // and .claude/ from cwd, where the knight's root ones are linked per task.
     "--setting-sources", "user,project",
     "--settings", settingsPath,
     "--mcp-config", mcpPath,

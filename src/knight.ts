@@ -13,7 +13,7 @@
  * (MEMORY.md, memory/*.md), as the knight contract already asks.
  */
 import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { resolveClaudeModel, type KnightConfig } from "./config.js";
 import { buildChildEnv, checkRuntime } from "./auth.js";
@@ -85,7 +85,8 @@ export function buildOptions(
     model: config.claudeModel,
     systemPrompt: { type: "preset", preset: "claude_code", append: buildAppendPrompt(config, cwd === config.workDir ? undefined : cwd) },
     // 'user' loads $CLAUDE_CONFIG_DIR (skills, settings); 'project' loads CLAUDE.md
-    // and .claude/ in the workspace — the knight may keep its own there.
+    // and .claude/ from cwd — the per-task dir, where linkProjectConfig() links
+    // the knight's own from the root workdir.
     settingSources: ["user", "project"],
     skills: "all",
     permissionMode: "bypassPermissions",
@@ -117,6 +118,23 @@ export function buildOptions(
 export function taskWorkDir(config: KnightConfig, taskId: string, runId?: string): string {
   const key = (runId || taskId).replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_").slice(0, 120) || "task";
   return join(config.workDir, "work", key);
+}
+
+/**
+ * Project settings resolve against cwd, which is the per-task dir. Symlink the
+ * knight's root CLAUDE.md and .claude/ into it so they keep applying.
+ */
+export function linkProjectConfig(config: KnightConfig, cwd: string): void {
+  for (const name of ["CLAUDE.md", ".claude"]) {
+    const src = join(config.workDir, name);
+    const dest = join(cwd, name);
+    if (!existsSync(src) || existsSync(dest)) continue;
+    try {
+      symlinkSync(src, dest);
+    } catch (e) {
+      log.warn("Could not link project config into task directory", { name, cwd, error: String(e) });
+    }
+  }
 }
 
 async function withRunLock<T>(runId: string | undefined, fn: () => Promise<T>): Promise<T> {
@@ -240,6 +258,7 @@ export async function executeTask(
 
     try {
       mkdirSync(cwd, { recursive: true });
+      linkProjectConfig(config, cwd);
       const opened = openStream(task, config, abortController, resume, over, cwd);
       cleanup = opened.cleanup;
       for await (const msg of opened.stream) applyMessage(msg, state, ctx);
