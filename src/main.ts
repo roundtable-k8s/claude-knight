@@ -1,6 +1,7 @@
 import { checkAuth, checkRuntime } from "./auth.js";
 import { loadConfig, type KnightConfig } from "./config.js";
-import { setActiveTaskCount, setDegradedReason, setSkillCount, startHealthServer, stopHealthServer } from "./health.js";
+import { waitForInflight } from "./drain.js";
+import { setActiveTaskCount, setDegradedReason, setDraining, setSkillCount, startHealthServer, stopHealthServer } from "./health.js";
 import { setIntrospectActiveTasks, startIntrospect } from "./introspect.js";
 import { executeTask, sweepStaleWorkDirs } from "./knight.js";
 import { initLogger, log } from "./logger.js";
@@ -211,10 +212,11 @@ export async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log.info("Shutdown signal received", { signal, activeCount });
-    const deadline = Date.now() + 60_000;
-    while (activeCount > 0 && Date.now() < deadline) await sleep(1000);
-    if (activeCount > 0) log.warn("Forcing shutdown with active tasks", { activeCount });
+    log.info("Shutdown signal received — draining", { signal, activeCount });
+    setDraining(true); // /ready -> 503 so the pod leaves Service endpoints
+    await puller?.stop(); // no new fetches; in-flight tasks keep heartbeating
+    const left = await waitForInflight({ getActive: () => activeCount, maxWaitMs: config.drainTimeoutMs });
+    if (left > 0) log.warn("Forcing shutdown with active tasks", { activeCount: left });
     await drain().catch((e) => log.error("NATS drain error", { error: String(e) }));
     metrics.natsConnected.labels(config.knightName).set(0);
     await stopHealthServer();
