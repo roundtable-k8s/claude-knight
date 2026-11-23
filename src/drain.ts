@@ -27,3 +27,49 @@ export async function waitForInflight(opts: DrainOptions): Promise<number> {
   }
   return opts.getActive();
 }
+
+export interface ShutdownDeps {
+  /** /ready -> 503 so the pod leaves Service endpoints. */
+  setDraining(draining: boolean): void;
+  /** Stop fetching new tasks (resolves once the pull loop has ended). */
+  stopPulling(): Promise<void>;
+  getActive(): number;
+  maxWaitMs: number;
+  pollMs?: number;
+  /** Close NATS after flushing pending publishes. */
+  drainNats(): Promise<void>;
+  /** Final teardown after NATS is drained (metrics, health server). */
+  cleanup?(): Promise<void> | void;
+  exit(code: number): void;
+}
+
+/**
+ * The shutdown sequence: setDraining → stop fetching → wait for in-flight → drain NATS → cleanup → exit.
+ * Idempotent: a second signal while shutting down is ignored. This is the one function the
+ * SIGTERM/SIGINT handlers call, and the one the tests exercise.
+ */
+export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<void> {
+  let shuttingDown = false;
+  return async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.info("Shutdown signal received — draining", { signal, activeCount: deps.getActive() });
+    deps.setDraining(true);
+    await deps.stopPulling();
+    const left = await waitForInflight({ getActive: deps.getActive, maxWaitMs: deps.maxWaitMs, pollMs: deps.pollMs });
+    if (left > 0) log.warn("Forcing shutdown with active tasks", { activeCount: left });
+    await deps.drainNats().catch((e) => log.error("NATS drain error", { error: String(e) }));
+    await deps.cleanup?.();
+    log.info("Shutdown complete");
+    deps.exit(0);
+  };
+}
+
+/** Wire the shutdown function to the real signals (the target is injectable for tests). */
+export function installSignalHandlers(
+  shutdown: (signal: string) => Promise<void>,
+  target: Pick<NodeJS.Process, "on"> = process,
+): void {
+  target.on("SIGTERM", () => void shutdown("SIGTERM"));
+  target.on("SIGINT", () => void shutdown("SIGINT"));
+}

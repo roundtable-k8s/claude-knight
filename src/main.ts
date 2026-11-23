@@ -1,6 +1,6 @@
 import { checkAuth, checkRuntime } from "./auth.js";
 import { loadConfig, type KnightConfig } from "./config.js";
-import { waitForInflight } from "./drain.js";
+import { createShutdown, installSignalHandlers } from "./drain.js";
 import { setActiveTaskCount, setDegradedReason, setDraining, setSkillCount, startHealthServer, stopHealthServer } from "./health.js";
 import { setIntrospectActiveTasks, startIntrospect } from "./introspect.js";
 import { executeTask, sweepStaleWorkDirs } from "./knight.js";
@@ -209,22 +209,22 @@ export async function main(): Promise<void> {
     },
   });
 
-  const shutdown = async (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    log.info("Shutdown signal received — draining", { signal, activeCount });
-    setDraining(true); // /ready -> 503 so the pod leaves Service endpoints
-    await puller?.stop(); // no new fetches; in-flight tasks keep heartbeating
-    const left = await waitForInflight({ getActive: () => activeCount, maxWaitMs: config.drainTimeoutMs });
-    if (left > 0) log.warn("Forcing shutdown with active tasks", { activeCount: left });
-    await drain().catch((e) => log.error("NATS drain error", { error: String(e) }));
-    metrics.natsConnected.labels(config.knightName).set(0);
-    await stopHealthServer();
-    log.info("Shutdown complete");
-    process.exit(0);
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
+  const shutdown = createShutdown({
+    setDraining: (d) => {
+      shuttingDown = d; // freeSlots() -> 0: no new fetches
+      setDraining(d);
+    },
+    stopPulling: async () => void (await puller?.stop()),
+    getActive: () => activeCount,
+    maxWaitMs: config.drainTimeoutMs,
+    drainNats: drain,
+    cleanup: async () => {
+      metrics.natsConnected.labels(config.knightName).set(0);
+      await stopHealthServer();
+    },
+    exit: (code) => process.exit(code),
+  });
+  installSignalHandlers(shutdown);
 
   log.info("Claude-Knight ready");
 }
