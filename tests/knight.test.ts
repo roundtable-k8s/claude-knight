@@ -208,6 +208,16 @@ test("per-task model overrides the knight model for that task only, and keeps re
   assert.equal(a.success && b.success, true);
 });
 
+test("per-task model applies inside the per-task working directory", async () => {
+  const { fn, calls } = fakeQuery(() => [init("s1"), done("s1", "ok")]);
+  const r = await executeTask("x", "t-mw", config, new AbortController().signal, "run-MW", { queryFn: fn, model: "opus" });
+  assert.equal(r.success, true);
+  const o = calls[0]!.options;
+  assert.equal(o.model, "opus");
+  assert.notEqual(o.cwd, config.workDir, "runs in a per-task dir");
+  assert.ok(o.cwd.startsWith(config.workDir));
+});
+
 test("per-task model that is not a Claude model is a task error, not a silent fallback", async () => {
   const { fn, calls } = fakeQuery(() => [init("s1"), done("s1", "ok")]);
   const r = await executeTask("x", "t", config, new AbortController().signal, undefined, {
