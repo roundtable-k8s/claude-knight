@@ -61,6 +61,8 @@ export interface CliInvocationOptions {
   resume?: string;
   /** Private per-task directory for the generated files. */
   taskDir: string;
+  /** Per-task working directory the process runs in; defaults to config.workDir. */
+  cwd?: string;
   /** Command that runs this program; defaults to defaultSelfCommand(). */
   selfCommand?: string[];
   /** Pod environment (tests pass their own). */
@@ -130,7 +132,7 @@ export function buildCliInvocation(config: KnightConfig, opts: CliInvocationOpti
   return {
     bin: config.claudeBin,
     args,
-    cwd: config.workDir,
+    cwd: opts.cwd ?? config.workDir,
     env: buildChildEnv(
       config.authMode,
       {
@@ -143,7 +145,7 @@ export function buildCliInvocation(config: KnightConfig, opts: CliInvocationOpti
       "cli",
     ),
     files: {
-      [promptPath]: buildAppendPrompt(config),
+      [promptPath]: buildAppendPrompt(config, opts.cwd),
       [mcpPath]: JSON.stringify(mcpConfig, null, 2),
       [settingsPath]: JSON.stringify(settings, null, 2),
     },

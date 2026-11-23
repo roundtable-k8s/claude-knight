@@ -83,7 +83,7 @@ test("sdk runtime is the api-mode default and passes an unattended configuration
 
   const o = calls[0]!.options;
   assert.equal(calls[0]!.prompt, "brief me");
-  assert.equal(o.cwd, work);
+  assert.equal(o.cwd, join(work, "work", "t1"));
   assert.equal(o.model, undefined, "non-Claude spec.model falls back to Claude Code default");
   assert.equal(o.permissionMode, "bypassPermissions");
   assert.equal(o.allowDangerouslySkipPermissions, true);
