@@ -17,6 +17,16 @@ export const BLOCKED_BASH_PATTERNS: Array<{ pattern: RegExp; reason: string }> =
 /** Prefix of every denial reason; the CLI runtime counts blocked calls by it. */
 export const BLOCK_REASON_PREFIX = "Blocked by knight safety policy: ";
 
+/**
+ * KNIGHT_BASH_GUARDRAILS: "on" (default) enables the blocklist, "off" disables
+ * it. Any other value keeps it on, so a typo never silently drops the guardrail.
+ * Read per call so the hook process (which inherits the pod env) and the SDK
+ * hook agree.
+ */
+export function bashGuardrailsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env["KNIGHT_BASH_GUARDRAILS"] ?? "on").trim().toLowerCase() !== "off";
+}
+
 export function checkBashCommand(command: string): string | undefined {
   for (const { pattern, reason } of BLOCKED_BASH_PATTERNS) {
     if (pattern.test(command)) return reason;
@@ -44,7 +54,11 @@ export interface PreToolUseDeny {
  * undefined (no opinion, Claude Code carries on). The output shape is the same
  * for SDK callback hooks and CLI command hooks (JSON on stdout, exit 0).
  */
-export function decidePreToolUse(input: PreToolUseInput): { reason: string; command: string; output: PreToolUseDeny } | undefined {
+export function decidePreToolUse(
+  input: PreToolUseInput,
+  env: NodeJS.ProcessEnv = process.env,
+): { reason: string; command: string; output: PreToolUseDeny } | undefined {
+  if (!bashGuardrailsEnabled(env)) return undefined;
   if (input.hook_event_name !== "PreToolUse" || input.tool_name !== "Bash") return undefined;
   const command = String((input.tool_input as { command?: unknown } | undefined)?.command ?? "");
   const reason = checkBashCommand(command);

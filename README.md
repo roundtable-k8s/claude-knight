@@ -120,6 +120,7 @@ A task payload may carry an optional `model` (a Claude alias or `claude-*` id); 
 | `CLAUDE_SESSION_MODE` | `run` | `run` or `fresh` |
 | `MCP_SERVERS_JSON` | — | extra MCP servers (`{"mcpServers":{…}}` or a bare map); merged over `/config/mcp.json` |
 | `CLAUDE_DISALLOWED_TOOLS` | — | extra built-ins to disable, comma separated |
+| `KNIGHT_BASH_GUARDRAILS` | `on` | `off` disables the dangerous-Bash blocklist (recursive delete at `/`, force push, piping a download into a shell, …) for both runtimes. Meant for trusted autonomous coding knights; logs a warning at startup. Any value other than `off` keeps it on |
 | `CLAUDE_CONFIG_DIR` | `/data/.claude-home` | Claude Code state, sessions, linked skills |
 
 ### GitHub credentials

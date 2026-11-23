@@ -6,6 +6,7 @@ import { executeTask, sweepStaleWorkDirs } from "./knight.js";
 import { initLogger, log } from "./logger.js";
 import * as metrics from "./metrics.js";
 import { connectNats, drain, HEARTBEAT_MS, publishResult, subscribe, type TaskDelivery } from "./nats.js";
+import { bashGuardrailsEnabled } from "./guardrails.js";
 import { checkReserve } from "./plan-limits.js";
 import { linkSkills } from "./skills.js";
 import { configureTools } from "./tools.js";
@@ -45,6 +46,7 @@ export async function main(): Promise<void> {
     concurrency: config.maxConcurrentTasks,
     planReserve: config.authMode === "subscription" ? config.planReserve : null,
   });
+  if (!bashGuardrailsEnabled()) log.warn("Bash guardrails disabled by KNIGHT_BASH_GUARDRAILS=off");
   if (config.knightModel && !config.claudeModel) {
     log.warn("spec.model is not a Claude model — using Claude Code's default model", { specModel: config.knightModel });
   }
